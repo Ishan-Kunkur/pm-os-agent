@@ -9,13 +9,13 @@
 
 ## 1. Trigger & loop type
 
-**Chosen type:** Cron, plus manual ad hoc runs. Monday at 9 a.m. prepares current-week priorities and status; Friday at 3 p.m. prepares the weekly wrap-up and next-week planning. Both use `America/Los_Angeles`.
+**Chosen type:** Cron + labeled inbound-task hooks + manual ad hoc runs. Monday at 9 a.m. prepares current-week priorities and status; Friday at 3 p.m. prepares the weekly wrap-up and next-week planning. Both use `America/Los_Angeles`. A GitHub issue receiving the `cortex-task` label triggers an additional run; extend the same intake pattern to Jira later. Manual submissions remain available.
 
-Fixed schedules support the weekly planning rhythm; ad hoc runs cover additional needs. Heartbeat polling and event hooks aren’t needed for this workflow. Each run pursues a bounded goal, but the goal itself doesn’t trigger it.
+Fixed schedules support the weekly planning rhythm; hooks handle tasks deliberately routed to Cortex, and ad hoc runs cover additional needs. Comments and ordinary edits do not trigger runs. Heartbeat polling is unnecessary because schedules and explicit intake events cover the workflow. Each run pursues a bounded goal, but the goal itself doesn’t trigger it.
 
-**Deduplication:** Scheduled runs use project + schedule slot + local date as a unique key. Ad hoc runs use a request ID. Repeated delivery of the same key returns the existing run’s status or result instead of starting another run.
+**Deduplication:** Scheduled runs use project + schedule slot + local date as a unique key. Inbound tasks use source + task ID + routing event ID. Ad hoc runs use a request ID. Repeated delivery of the same key returns the existing run’s status or result instead of starting another run. An intentional rerun requires a new explicit request.
 
-**Implementation status:** Scheduling and deduplication are planned; the current starter runs manually.
+**Implementation status:** Scheduling, inbound-task hooks, their live connectors, and deduplication are planned; the current starter runs manually on local fixtures.
 
 ## 2. Goal / definition of done
 
