@@ -51,7 +51,7 @@ _`state` is always-on. `connectors` only if you already have one wired (e.g. a J
 
 | Component | For Cortex |
 |---|---|
-| **Work tree** (isolated workspace per run, a git worktree) | No separate Git worktree needed; runs are sequential and do not modify source files. |
+| **Work tree** (isolated workspace per run, a git worktree) | Planned: use a separate Git worktree per run to isolate its working files and prepare for future code-editing workflows. Start each run from an explicitly selected commit, provide dependencies and credentials through local configuration without committing secrets, and retain review artifacts before cleaning up the worktree. Worktrees isolate files, not credentials or external actions. The current runtime still uses a shared checkout. |
 | **Skills** (reusable capabilities) | Plan reusable procedures for source grounding, update formatting, and story proposals; extract them once the workflow is validated. |
 | **Plugins / connectors** (tools & access, optional if you don't have one yet) | Keep local fixtures for now. Read-only GitHub/Jira integration is future work; no live connections are wired into Cortex's runtime. |
 | **Subagents** (independent check when the loop can't grade itself) | Keep the existing independent critic model call; defer additional specialists and orchestration design to M3 orchestration-map.md. |
