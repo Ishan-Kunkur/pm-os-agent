@@ -28,6 +28,10 @@ from __future__ import annotations
 import json
 import os
 import sys
+import re
+import time
+from datetime import datetime, timezone
+from uuid import uuid4
 from pathlib import Path
 
 from openai import OpenAI
@@ -137,91 +141,135 @@ def emit_deliverable(which: str, draft: str, *, accepted: bool,
               f"(for your review, nothing was posted)")
 
 
-def run(which: str = "happy") -> None:
-    client = OpenAI()
+def run(which: str = "happy") -> dict:
+    """Run one bounded task; every exit persists evidence and an explicit outcome."""
+    started = time.monotonic()
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8]
     bounds = Bounds()
     task = tools.get_task(which)
+    source_log = [task.get("body", "")]
+    revisions = 0
+    step = 0
+    last_draft = ""
+    verdict = None
+    queued = []
+    project_ids = set()
+    retrieved = set()
+
+    def finish(outcome: str, reason: str) -> dict:
+        record = {
+            "run_id": run_id, "fixture": which,
+            "project_ids": sorted(project_ids), "outcome": outcome,
+            "stop_reason": reason, "iterations": step, "revisions": revisions,
+            "estimated_cost_usd": bounds.cost,
+            "duration_seconds": round(time.monotonic() - started, 3),
+            "limits": {"iterations": MAX_ITERATIONS, "revisions": MAX_REVISIONS,
+                       "cost_usd": COST_CAP_USD, "queue_items": MAX_QUEUE_ITEMS},
+            "draft": last_draft, "sources": source_log,
+            "proposed_stories": queued, "critic": verdict,
+        }
+        OUTPUT_DIR.mkdir(exist_ok=True)
+        record_path = OUTPUT_DIR / f"run-{run_id}.json"
+        record_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
+        banner(f"STOP: {outcome.upper()} — {reason}")
+        emit_deliverable(which, last_draft, accepted=outcome == "success",
+                         reason=reason, cost=bounds.cost)
+        print(f"Run record -> {record_path.relative_to(Path(__file__).parent)}")
+        print(f"Iterations: {step}; revisions: {revisions}; "
+              f"cost ≈ ${bounds.cost:.4f}; duration: {record['duration_seconds']}s")
+        return record
+
     if "error" in task:
-        print(task)
-        return
+        return finish("escalation", task["error"])
 
-    banner(f"CORTEX RUN, fixture: task-{which}  (auto-queue cap {MAX_QUEUE_ITEMS} items)")
+    banner(f"CORTEX RUN, fixture: task-{which} (auto-queue cap {MAX_QUEUE_ITEMS} items)")
     print(task["body"])
-
     messages = [
         {"role": "system", "content": CORTEX_SYSTEM},
         {"role": "user", "content": f"PM task brief:\n\n{task['body']}"},
     ]
-    source_log: list[str] = [task["body"]]
-    revisions = 0
-    last_draft = ""
+    wants_stories = bool(re.search(r"\bstor(?:y|ies)\b", task["body"], re.I))
 
-    for step in range(1, MAX_ITERATIONS + 1):
-        if bounds.over_cap():
-            reason = f"cost cap ${COST_CAP_USD} hit at ${bounds.cost:.4f}"
-            banner(f"BOUND TRIPPED, {reason}. Halting and escalating to a human.")
-            emit_deliverable(which, last_draft, accepted=False,
-                             reason=reason, cost=bounds.cost)
-            return
+    try:
+        client = OpenAI()
+        for step in range(1, MAX_ITERATIONS + 1):
+            if bounds.over_cap():
+                return finish("stuck", "cost cap reached")
+            resp = client.chat.completions.create(
+                model=MODEL, messages=messages, tools=TOOL_SCHEMAS)
+            bounds.add(resp.usage)
+            msg = resp.choices[0].message
+            if bounds.over_cap():
+                return finish("stuck", "cost cap reached after model response")
 
-        resp = client.chat.completions.create(
-            model=MODEL, messages=messages, tools=TOOL_SCHEMAS)
-        bounds.add(resp.usage)
-        msg = resp.choices[0].message
+            if msg.tool_calls:
+                messages.append(msg)
+                for call in msg.tool_calls:
+                    fn = call.function.name
+                    args = json.loads(call.function.arguments or "{}")
+                    if fn not in {t["function"]["name"] for t in TOOL_SCHEMAS}:
+                        return finish("escalation", "unapproved tool requested")
+                    result = tools.TOOLS[fn](**args)
+                    source_log.append(f"{fn}({args}) -> {json.dumps(result)}")
+                    print(f"\n[step {step}] TOOL {fn}({args})")
+                    print(f"          -> {json.dumps(result)}")
+                    if args.get("project_id"):
+                        project_ids.add(args["project_id"])
+                    messages.append({"role": "tool", "tool_call_id": call.id,
+                                     "content": json.dumps(result)})
+                    if result.get("error") or result.get("status") == "rejected":
+                        return finish("escalation", f"{fn}: {result.get('error', 'rejected')}")
+                    retrieved.add(fn)
+                    if fn == "get_project" and (
+                        result.get("status") == "embargoed"
+                        or set(result.get("flags", [])) & {"confidential", "launch_hold"}
+                    ):
+                        return finish("escalation", "project confidentiality or launch hold needs human judgment")
+                    if fn == "get_activity" and any(
+                        str(item.get("severity", "")).lower() == "sev-1"
+                        for item in result.get("activity", [])
+                    ):
+                        return finish("escalation", "open project Sev-1 needs human judgment")
+                    if fn == "propose_stories":
+                        queued.append(result)
+                        if sum(batch["count"] for batch in queued) > MAX_QUEUE_ITEMS:
+                            return finish("escalation", "cumulative story batch exceeds queue cap")
+                continue
 
-        if msg.tool_calls:
+            last_draft = msg.content or ""
+            print(f"\n[step {step}] PROPOSED OUTPUT:\n{last_draft}")
+            # Escalation is a distinct exit, never critic-approved success.
+            if re.search(r"^ESCALATE:", last_draft, re.M):
+                return finish("escalation", "Cortex requested human judgment; output is held unvalidated")
+            unmet = []
+            if not re.search(r"^DONE:", last_draft, re.M):
+                unmet.append("End with DONE or ESCALATE as instructed.")
+            if not {"get_project", "get_activity", "get_norms"} <= retrieved:
+                unmet.append("Retrieve the project, activity, and team norms before declaring done.")
+            if wants_stories and not queued:
+                unmet.append("Requested stories must have a successful propose_stories result.")
+            banner("CRITIC, independent validation")
+            verdict = review(client, MODEL, last_draft, "\n".join(source_log))
+            bounds.cost += (verdict["_usage"]["prompt"] * PRICE_IN
+                            + verdict["_usage"]["completion"] * PRICE_OUT) / 1_000_000
+            print(json.dumps({k: v for k, v in verdict.items() if k != "_usage"}, indent=2))
+            if bounds.over_cap():
+                return finish("stuck", "cost cap reached after critic")
+            if verdict.get("verdict") == "pass" and not unmet:
+                banner("HITL CHECKPOINT — draft and proposals held for human review; nothing posted")
+                return finish("success", "critic passed and completion requirements met")
+            if revisions >= MAX_REVISIONS:
+                return finish("stuck", f"draft still fails after {MAX_REVISIONS} revision attempts")
+            revisions += 1
+            print(f"\n-> revision {revisions}/{MAX_REVISIONS}")
             messages.append(msg)
-            for call in msg.tool_calls:
-                fn = call.function.name
-                args = json.loads(call.function.arguments or "{}")
-                result = tools.TOOLS[fn](**args)
-                source_log.append(f"{fn}({args}) -> {json.dumps(result)}")
-                print(f"\n[step {step}] TOOL {fn}({args})")
-                print(f"          -> {json.dumps(result)[:300]}")
-                messages.append({"role": "tool", "tool_call_id": call.id,
-                                 "content": json.dumps(result)})
-            continue
-
-        # No tool calls => Cortex produced a proposed output. Validate it.
-        proposed = msg.content or ""
-        last_draft = proposed
-        print(f"\n[step {step}] PROPOSED OUTPUT:\n{proposed}")
-
-        banner("CRITIC, independent validation")
-        verdict = review(client, MODEL, proposed, "\n".join(source_log))
-        # Estimate critic spend too.
-        bounds.cost += (verdict["_usage"]["prompt"] * PRICE_IN
-                        + verdict["_usage"]["completion"] * PRICE_OUT) / 1_000_000
-        print(json.dumps({k: v for k, v in verdict.items() if k != "_usage"}, indent=2))
-
-        if verdict["verdict"] == "pass":
-            banner(f"HITL CHECKPOINT, status update + any proposed stories queued for "
-                   f"your review. Nothing posted, no commitments made. "
-                   f"Run cost ≈ ${bounds.cost:.4f}")
-            emit_deliverable(which, proposed, accepted=True,
-                             reason="validator passed", cost=bounds.cost)
-            return
-
-        if revisions >= MAX_REVISIONS:
-            reason = f"validator rejected {MAX_REVISIONS}x (revision cap)"
-            banner(f"REVISION CAP hit ({MAX_REVISIONS}). Escalating to a human "
-                   f"instead of looping. Run cost ≈ ${bounds.cost:.4f}")
-            emit_deliverable(which, last_draft, accepted=False,
-                             reason=reason, cost=bounds.cost)
-            return
-
-        revisions += 1
-        print(f"\n-> critic rejected; revision {revisions}/{MAX_REVISIONS}")
-        messages.append(msg)
-        messages.append({"role": "user", "content":
-                         "A validator rejected that for these reasons: "
-                         f"{verdict['reasons']}. Fix it or escalate."})
-
-    banner(f"MAX ITERATIONS ({MAX_ITERATIONS}) reached without finishing. "
-           f"Escalating. Run cost ≈ ${bounds.cost:.4f}")
-    emit_deliverable(which, last_draft, accepted=False,
-                     reason=f"max iterations ({MAX_ITERATIONS}) reached",
-                     cost=bounds.cost)
+            messages.append({"role": "user", "content":
+                f"Validation failed: {verdict.get('reasons', [])}; {unmet}. "
+                "Fix the draft or end with ESCALATE: and explain the human decision needed."})
+        return finish("stuck", f"maximum iterations ({MAX_ITERATIONS}) reached")
+    except Exception as exc:
+        # Preserve evidence without writing credentials or raw exception payloads.
+        return finish("stuck", f"runtime failure: {type(exc).__name__}; human investigation required")
 
 
 if __name__ == "__main__":
