@@ -106,6 +106,6 @@ Tag shared records with run/project IDs. Saved drafts and rejected outputs remai
 
 **Latency:** Validation adds a wait before PM review; each revision adds another drafting-and-validation cycle. The controlled M3 rejection test took approximately 7.9 seconds and cost an estimated $0.0011, with four iterations and one revision attempt. Its initial tool requests and bad draft were injected by the test harness, so these figures are test observations, not a normal-run benchmark or guaranteed response time.
 
-**Budget:** Keep the $0.50 estimated per-run cap and log estimated cost and duration for trend reviews. Runtime cost estimates use configured token prices; they are not an exact billing limit and may overshoot by the model call that crosses the threshold. Changes to limits require human approval. Forward-link: M5 bounds and evals.
+**Budget:** Keep the $0.10 estimated per-run cap and log estimated cost and duration for trend reviews. Runtime cost estimates use configured token prices; they are not an exact billing limit and may overshoot by the model call that crosses the threshold. Changes to limits require human approval. Forward-link: M5 bounds and evals.
 
 **Planned specialists:** Readers and research must share the overall run budget. Their individual work, model-call, and latency limits must be defined before implementation; no measured fleet overhead or enforced specialist sub-budgets exist yet.

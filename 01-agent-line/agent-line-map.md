@@ -59,7 +59,7 @@ Deciding relevant context was my hardest call. Cortex can select information for
 
 - Maximum **8 loop iterations**.
 - Maximum **2 revision attempts**.
-- Maximum **$0.50 estimated cost per run**.
+- Maximum **$0.10 estimated cost per run**.
 - Maximum **10 proposed stories**, all requiring approval.
 
 ### Three refuse/stop cases

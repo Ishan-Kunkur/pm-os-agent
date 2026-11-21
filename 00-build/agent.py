@@ -51,7 +51,7 @@ except ImportError:
 MODEL = os.environ.get("CORTEX_MODEL", "gpt-4o-mini")
 MAX_ITERATIONS = int(os.environ.get("CORTEX_MAX_ITERATIONS", "8"))
 MAX_REVISIONS = int(os.environ.get("CORTEX_MAX_REVISIONS", "2"))
-COST_CAP_USD = float(os.environ.get("CORTEX_COST_CAP_USD", "0.50"))
+COST_CAP_USD = float(os.environ.get("CORTEX_COST_CAP_USD", "0.10"))
 MAX_QUEUE_ITEMS = int(os.environ.get("CORTEX_MAX_QUEUE_ITEMS", "10"))
 # Rough $ per 1M tokens for your chosen model, set to match its pricing.
 PRICE_IN = float(os.environ.get("CORTEX_PRICE_IN_PER_M", "0.15"))
