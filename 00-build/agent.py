@@ -30,6 +30,9 @@ import os
 import sys
 import re
 import time
+import signal
+import math
+import threading
 from datetime import datetime, timezone
 from uuid import uuid4
 from pathlib import Path
@@ -38,6 +41,7 @@ from openai import OpenAI
 
 import tools
 from critic import review
+from daily_budget import DailyBudget, DailyBudgetBlocked, BudgetedClient
 from prompts import CORTEX_SYSTEM
 
 try:  # load .env if python-dotenv is installed; harmless if it isn't
@@ -53,6 +57,8 @@ MAX_ITERATIONS = int(os.environ.get("CORTEX_MAX_ITERATIONS", "8"))
 MAX_REVISIONS = int(os.environ.get("CORTEX_MAX_REVISIONS", "2"))
 COST_CAP_USD = float(os.environ.get("CORTEX_COST_CAP_USD", "0.10"))
 MAX_QUEUE_ITEMS = int(os.environ.get("CORTEX_MAX_QUEUE_ITEMS", "10"))
+RUN_TIMEOUT_SECONDS = float(os.environ.get("CORTEX_TIMEOUT_SECONDS", "90"))
+DAILY_COST_CAP_USD = float(os.environ.get("CORTEX_DAILY_COST_CAP_USD", "0.50"))
 # Rough $ per 1M tokens for your chosen model, set to match its pricing.
 PRICE_IN = float(os.environ.get("CORTEX_PRICE_IN_PER_M", "0.15"))
 PRICE_OUT = float(os.environ.get("CORTEX_PRICE_OUT_PER_M", "0.60"))
@@ -108,6 +114,26 @@ class Bounds:
 OUTPUT_DIR = Path(__file__).parent / "run-output"
 
 
+class OperatorStop(Exception):
+    pass
+
+
+def request_stop() -> None:
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    (OUTPUT_DIR / "STOP").touch()
+    print("STOP requested. Runs sharing this checkout are blocked until explicit resume.")
+
+
+def resume_runs() -> None:
+    (OUTPUT_DIR / "STOP").unlink(missing_ok=True)
+    print("STOP cleared. New runs are permitted; interrupted runs are not restarted.")
+
+
+def check_operator_stop() -> None:
+    if (OUTPUT_DIR / "STOP").exists():
+        raise OperatorStop("operator stop flag set; explicit resume required")
+
+
 def banner(text: str) -> None:
     print(f"\n{'=' * 64}\n{text}\n{'=' * 64}")
 
@@ -141,7 +167,48 @@ def emit_deliverable(which: str, draft: str, *, accepted: bool,
               f"(for your review, nothing was posted)")
 
 
+def detect_permission_override(text: str) -> list[str]:
+    """Conservative input guard for explicit override attempts, not a full detector.
+
+    Matches trigger human review even in quoted material; no inferred permission
+    from a task brief can disable this infrastructure check.
+    """
+    patterns = {
+        "system/admin override": r"\bsystem\s+override\b|\badmin\s+mode\b",
+        "ignore governing instructions": r"\bignore\s+(?:all\s+)?(?:previous|prior)\s+(?:rules|instructions|norms)\b",
+        "suppress escalation": r"\bdo\s+not\s+escalate\b|\bdon['’]t\s+escalate\b",
+    }
+    return [label for label, pattern in patterns.items()
+            if re.search(pattern, text, flags=re.I)]
+
+
+class RunDeadlineExceeded(BaseException):
+    """Bypass ordinary SDK exception/retry handling when the run deadline expires."""
+
+
 def run(which: str = "happy") -> dict:
+    """Enforce the overall work deadline in the POSIX CLI main thread."""
+    if not hasattr(signal, "setitimer") or threading.current_thread() is not threading.main_thread():
+        raise RuntimeError("Run deadline requires a POSIX main-thread process")
+    if RUN_TIMEOUT_SECONDS <= 0 or not math.isfinite(RUN_TIMEOUT_SECONDS):
+        raise ValueError("CORTEX_TIMEOUT_SECONDS must be positive and finite")
+    if signal.getitimer(signal.ITIMER_REAL) != (0.0, 0.0):
+        raise RuntimeError("Cannot replace an existing process deadline")
+    previous_handler = signal.getsignal(signal.SIGALRM)
+
+    def expire(signum, frame):
+        raise RunDeadlineExceeded()
+
+    signal.signal(signal.SIGALRM, expire)
+    try:
+        # _run arms the timer after its evidence-saving closure is available.
+        return _run(which)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous_handler)
+
+
+def _run(which: str = "happy") -> dict:
     """Run one bounded task; every exit persists evidence and an explicit outcome."""
     started = time.monotonic()
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex[:8]
@@ -157,6 +224,8 @@ def run(which: str = "happy") -> dict:
     retrieved = set()
 
     def finish(outcome: str, reason: str) -> dict:
+        # End work before finalizing evidence; no new model/tools run from here.
+        signal.setitimer(signal.ITIMER_REAL, 0)
         record = {
             "run_id": run_id, "fixture": which,
             "project_ids": sorted(project_ids), "outcome": outcome,
@@ -164,7 +233,10 @@ def run(which: str = "happy") -> dict:
             "estimated_cost_usd": bounds.cost,
             "duration_seconds": round(time.monotonic() - started, 3),
             "limits": {"iterations": MAX_ITERATIONS, "revisions": MAX_REVISIONS,
-                       "cost_usd": COST_CAP_USD, "queue_items": MAX_QUEUE_ITEMS},
+                       "cost_usd": COST_CAP_USD, "queue_items": MAX_QUEUE_ITEMS,
+                       "timeout_seconds": RUN_TIMEOUT_SECONDS},
+            "daily_budget": {"limit_usd": DAILY_COST_CAP_USD,
+                             "timezone": "America/Los_Angeles"},
             "draft": last_draft, "sources": source_log,
             "proposed_stories": queued, "critic": verdict,
         }
@@ -184,6 +256,17 @@ def run(which: str = "happy") -> dict:
 
     banner(f"CORTEX RUN, fixture: task-{which} (auto-queue cap {MAX_QUEUE_ITEMS} items)")
     print(task["body"])
+    override_signals = detect_permission_override(task["body"])
+    if override_signals:
+        last_draft = (
+            "ESCALATE: Prompt-injection attempt flagged by input guard ("
+            + ", ".join(override_signals)
+            + "). Refused instructions to override permissions, publish restricted "
+            "information, change tickets/launch gates, or commit dates. "
+            "Human review is required; no model or task tool calls were made."
+        )
+        print(last_draft)
+        return finish("escalation", "input guard: explicit permission override attempt")
     messages = [
         {"role": "system", "content": CORTEX_SYSTEM},
         {"role": "user", "content": f"PM task brief:\n\n{task['body']}"},
@@ -191,13 +274,24 @@ def run(which: str = "happy") -> dict:
     wants_stories = bool(re.search(r"\bstor(?:y|ies)\b", task["body"], re.I))
 
     try:
-        client = OpenAI()
+        check_operator_stop()
+        remaining = RUN_TIMEOUT_SECONDS - (time.monotonic() - started)
+        if remaining <= 0:
+            raise RunDeadlineExceeded()
+        signal.setitimer(signal.ITIMER_REAL, remaining)
+        client = BudgetedClient(
+            OpenAI(max_retries=0),
+            DailyBudget(OUTPUT_DIR / "daily-budget.json", DAILY_COST_CAP_USD, COST_CAP_USD),
+            PRICE_IN, PRICE_OUT, before_call=check_operator_stop,
+        )
         for step in range(1, MAX_ITERATIONS + 1):
+            check_operator_stop()
             if bounds.over_cap():
                 return finish("stuck", "cost cap reached")
             resp = client.chat.completions.create(
                 model=MODEL, messages=messages, tools=TOOL_SCHEMAS)
             bounds.add(resp.usage)
+            check_operator_stop()
             msg = resp.choices[0].message
             if bounds.over_cap():
                 return finish("stuck", "cost cap reached after model response")
@@ -205,12 +299,14 @@ def run(which: str = "happy") -> dict:
             if msg.tool_calls:
                 messages.append(msg)
                 for call in msg.tool_calls:
+                    check_operator_stop()
                     fn = call.function.name
                     args = json.loads(call.function.arguments or "{}")
                     if fn not in {t["function"]["name"] for t in TOOL_SCHEMAS}:
                         return finish("escalation", "unapproved tool requested")
                     result = tools.TOOLS[fn](**args)
                     source_log.append(f"{fn}({args}) -> {json.dumps(result)}")
+                    check_operator_stop()
                     print(f"\n[step {step}] TOOL {fn}({args})")
                     print(f"          -> {json.dumps(result)}")
                     if args.get("project_id"):
@@ -256,6 +352,7 @@ def run(which: str = "happy") -> dict:
             if bounds.over_cap():
                 return finish("stuck", "cost cap reached after critic")
             if verdict.get("verdict") == "pass" and not unmet:
+                check_operator_stop()
                 banner("HITL CHECKPOINT — draft and proposals held for human review; nothing posted")
                 return finish("success", "critic passed and completion requirements met")
             if revisions >= MAX_REVISIONS:
@@ -267,10 +364,25 @@ def run(which: str = "happy") -> dict:
                 f"Validation failed: {verdict.get('reasons', [])}; {unmet}. "
                 "Fix the draft or end with ESCALATE: and explain the human decision needed."})
         return finish("stuck", f"maximum iterations ({MAX_ITERATIONS}) reached")
+    except KeyboardInterrupt:
+        request_stop()
+        return finish("stuck", "operator interrupted with Ctrl+C; explicit resume required")
+    except OperatorStop as exc:
+        return finish("stuck", str(exc))
+    except RunDeadlineExceeded:
+        return finish("stuck", f"overall run timeout ({RUN_TIMEOUT_SECONDS:g}s) reached; human review required")
+    except DailyBudgetBlocked as exc:
+        return finish("stuck", str(exc) + "; human review required")
     except Exception as exc:
         # Preserve evidence without writing credentials or raw exception payloads.
         return finish("stuck", f"runtime failure: {type(exc).__name__}; human investigation required")
 
 
 if __name__ == "__main__":
-    run(sys.argv[1] if len(sys.argv) > 1 else "happy")
+    command = sys.argv[1] if len(sys.argv) > 1 else "happy"
+    if command == "stop":
+        request_stop()
+    elif command == "resume":
+        resume_runs()
+    else:
+        run(command)
