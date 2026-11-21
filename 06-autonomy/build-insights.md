@@ -6,16 +6,18 @@
 
 ## Friction
 
-_Where did the build fight you? (Loop stop conditions? Context budget? The validator? Bounds?)_
+The biggest friction was discovering that a rule in a prompt was not an enforced boundary. Cortex sometimes missed an injection, invented facts, or received an incorrect critic verdict. We had to add controls outside the model—required-evidence checks, an input guard, deadlines, spending reservations, and stop/resume behavior—and test their failure paths.
 
 ## Learning
 
-_The two or three things you now understand about shipping agents that you didn't before the course._
+1. **Capability isn't permission:** Producing a draft doesn't authorize publishing or commitments.
+2. **A critic is fallible:** It needs positive and negative tests, with failures preserved.
+3. **The path matters:** Tool use, evidence, stop conditions, and human handoffs matter alongside the final answer.
 
 ## Aha moment
 
-_The single insight that changed how you'd design your next agent._
+An agent's autonomy is defined by what the system permits and enforces, not by how confidently the model responds. The same unchanged jailbreak produced different behavior until a code-level guard made the explicit case deterministic.
 
 ## What you'd do differently
 
-_If you rebuilt Cortex from scratch, what changes?_
+I would define the evidence contract and regression cases before polishing prompts: test missing sources, false metrics, injection attempts, and bound trips from the start. I would also scope retrieval by project before adding live connectors, and delay extra agents until their handoffs and budgets are clear.

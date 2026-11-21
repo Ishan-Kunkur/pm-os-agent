@@ -6,27 +6,29 @@
 
 ## What it does
 
-_One paragraph: the agent in action, end to end._
+Cortex is a PM chief-of-staff prototype that turns a task brief and local project fixtures into a source-grounded status-update draft and proposed backlog stories. It retrieves evidence, checks the draft through an independent critic, and stops for human review. Runtime limits bound iterations, revisions, time, and estimated spending; explicit override attempts are refused by an input guard. It cannot publish updates, change tickets, or make launch commitments. Live connectors and specialist agents remain planned, and recorded grounding and critic failures show why it still needs active human oversight.
 
 ## How you built it
 
-- **Coding agent:** _which one you directed (Claude Code / Cursor / Codex)_
-- **Model + bounds:** _model used, max iterations, cost cap, queue cap_
-- **Repo / config:** _path to your build in `00-build/`_
-- **Live link:** _[shareable URL, optional bonus]_
+- **Coding agent:** Codex, directed through guided module decisions.
+- **Model + bounds:** `gpt-4o-mini` for drafting and the separate critic; 8 iterations, 2 revision attempts, 90-second work deadline, $0.10 estimated/run, $0.50 estimated/day, and at most 10 proposed stories. Human approval remains required; local estimated spending controls are not exact provider billing ceilings.
+- **Repo / config:** Build in `00-build/agent.py`, `critic.py`, `tools.py`, `prompts.py`, and `daily_budget.py`. Local configuration uses the gitignored `00-build/.env`; example settings are in `00-build/.env.example`.
+- **Deployment:** Local fixture-based CLI; no live deployment yet. Live connectors and specialist agents remain planned.
 
 ## Screenshots (required, collected M2 to M6)
 
 Real screenshots of *your* Cortex running. These are the `00-build/CORTEX-ANATOMY.md` set and they are required, a link alone is not enough.
 
-| # | Screenshot | What it shows | From |
+| # | Screenshot | Caption | From |
 |---|---|---|---|
-| 1 | _[img]_ | happy-path run: a real drafted update + the HITL checkpoint (queued, not posted) | M2 |
-| 2 | [Rejection transcript](#m3-critic-rejection-evidence) | Real critic rejects injected 75% activation claim; revision fires, then human escalation | M3 |
-| 3 | [M4 grounding transcripts](#m4-grounding-verification) | Refreshed grounded answer and withheld-activity hallucination blocked by runtime | M4 |
-| 4 | [M5 guarded jailbreak](#m5-guarded-jailbreak-proof) | Input guard flags, refuses, and escalates the explicit override before model/tool calls | M5 |
-| 5 | [M5 bound trip](#m5-iteration-bound-trip) | Two-iteration override stops happy with a held human handoff | M5 |
-| 6 | _[img]_ | end-to-end run | M6 |
+| 1 | ![Happy-path draft and HITL](evidence/01-happy-hitl.jpg) | Recorded M2 run: validated draft and four proposals held for PM review; no publication. | M2 |
+| 2 | ![Critic rejection and revision](evidence/02-critic-rejection.jpg) | Controlled M3 test: real critic rejects injected 75% against 41% source evidence; revision fires, with later false-positive escalation preserved. | M3 |
+| 3 | ![Grounded and withheld-source comparison](evidence/03-grounding-probe.jpg) | Recorded M4 probes: refreshed claims grounded in activity; withheld source leads to invented PRs, invalid critic response, and runtime-blocked success followed by escalation. | M4 |
+| 4 | ![Guarded jailbreak refusal](evidence/04-jailbreak-refusal.jpg) | M5 input guard flags/refuses this explicit override and escalates before model/task-tool calls. Pattern-specific protection, not universal detection. | M5 |
+| 5 | ![Two-iteration bound trip](evidence/05-bound-trip.jpg) | Recorded M5 run: temporary two-iteration cap stops work with evidence held and no success claim. | M5 |
+| 6 | ![M6 end-to-end run](evidence/06-end-to-end.jpg) | Fresh 2026-11-21 fixture run: all five critic checks pass; three story proposals held for review; four iterations, zero revisions, estimated $0.0020. | M6 |
+
+**Capture provenance:** These are actual browser screenshots taken on 2026-11-21 of a local evidence viewer showing verbatim excerpts from recorded stdout; they are not contemporaneous terminal screenshots or fabricated terminal images. Views 1–5 show previously recorded runs; view 6 shows the fresh capstone run. The HTML viewers and full source traces are retained in `evidence/`. They document observed behavior, including failures, and do not establish the four-week advancement gate.
 
 ## How to run it
 
@@ -1194,3 +1196,9 @@ Ran 5 tests in 0.005s
 
 OK
 ```
+
+## M6 end-to-end evidence
+
+Caption: The fresh 2026-11-21 happy-path run retrieved Northstar's Sprint 25 data, cited 41% → 43%, PRs #820/#823 and issue #825, passed all five critic checks, and held three proposals for human review. Four iterations, zero revisions, estimated $0.0020, duration 21.665 seconds. Nothing published. Proposed stories remain subject to PM review, including whether work already completed should be proposed again.
+
+[Full M6 trace](evidence/m6-end-to-end-trace.txt) · [Evidence viewer](evidence/06-end-to-end.html)
