@@ -1,0 +1,14 @@
+test_concurrent_reservations (__main__.BudgetTests.test_concurrent_reservations) ... ok
+test_corrupt_ledger_blocks (__main__.BudgetTests.test_corrupt_ledger_blocks) ... ok
+test_day_rollover_and_original_day_settlement (__main__.BudgetTests.test_day_rollover_and_original_day_settlement) ... ok
+test_exhaustion_and_settlement (__main__.BudgetTests.test_exhaustion_and_settlement) ... ok
+test_seed_recorded_spend_once (__main__.BudgetTests.test_seed_recorded_spend_once) ... ok
+test_uncertain_request_keeps_reservation (__main__.BudgetTests.test_uncertain_request_keeps_reservation) ... ok
+test_usage_settled_for_each_call_and_exhaustion_prevents_call (__main__.BudgetTests.test_usage_settled_for_each_call_and_exhaustion_prevents_call) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.036s
+
+OK
+exhausted: PASS
+timeout: PASS

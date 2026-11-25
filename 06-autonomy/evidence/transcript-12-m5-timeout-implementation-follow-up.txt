@@ -1,0 +1,5 @@
+Hung drafting API interrupted: PASS
+Hung critic interrupted; draft preserved: PASS
+Hung tool interrupted: PASS
+Ordinary completion and timer cleanup: PASS
+Production default deadline: 90 seconds

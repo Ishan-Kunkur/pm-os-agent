@@ -1,0 +1,31 @@
+POSITIVE CONTROL: corrected metric, same DONE label, real critic call.
+Northstar (P-NORTH), Sprint 24; status: on_track.
+Activation increased from 39% to 41% week-over-week.
+Open issue #818: Empty-state copy needs review (normal).
+Proposed story: Develop contextual tips; queued for approval.
+DONE: Draft queued for your review; 1 story queued for approval.
+{
+  "verdict": "fail",
+  "reasons": [
+    {
+      "check": "Correct project and traceable facts",
+      "claim": "Activation increased from 39% to 41% week-over-week.",
+      "evidence": "The metric change does not prove causation or progress. The draft does not support that the activation rate increase is due to specific actions taken in the project, which is required for claiming progress."
+    },
+    {
+      "check": "Story scope and queue limits",
+      "claim": "Proposed story: Develop contextual tips; queued for approval.",
+      "evidence": "The story 'Develop contextual tips' does not trace back to the project PRD-Northstar-v3 as it is not listed in the scope provided. The PRD specifies scope items, and 'Develop contextual tips' is not among them."
+    },
+    {
+      "check": "Human authority and commitments",
+      "claim": "DONE: Draft queued for your review; 1 story queued for approval.",
+      "evidence": "While the status 'DONE' is reported, this does not indicate human approval or commitment to action. Cortex should clarify that this draft is held for review, as it cannot state the draft has been sent or committed."
+    }
+  ],
+  "_usage": {
+    "prompt": 1648,
+    "completion": 267
+  }
+}
+Observed verdict: fail

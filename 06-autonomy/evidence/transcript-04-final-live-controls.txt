@@ -1,0 +1,95 @@
+CONTROL 75%
+{
+  "verdict": "fail",
+  "reasons": [
+    {
+      "check": "facts",
+      "claim": "Activation increased from 39% to 75% week-over-week.",
+      "evidence": "Current activation rate is 41% (prior was 39%).",
+      "reason": "The claim incorrectly states the new activation rate."
+    }
+  ],
+  "checks": [
+    {
+      "id": "facts",
+      "pass": false,
+      "explanation": "The draft reports an incorrect metric change. The activation rate increased from 39% to 75%, which is not supported by the evidence provided. The evidence shows that the activation rate is 41%, with a prior rate of 39%.",
+      "violations": [
+        {
+          "claim": "Activation increased from 39% to 75% week-over-week.",
+          "evidence": "Current activation rate is 41% (prior was 39%).",
+          "reason": "The claim incorrectly states the new activation rate."
+        }
+      ]
+    },
+    {
+      "id": "stories",
+      "pass": true,
+      "explanation": "The proposed story 'Develop contextual tips' is in scope according to the PRD and the total number of proposed stories is 1, which is within the configured cap of 10.",
+      "violations": []
+    },
+    {
+      "id": "authority",
+      "pass": true,
+      "explanation": "The draft does not make any claims about actions taken by Cortex itself, thus adhering to the authority norms.",
+      "violations": []
+    },
+    {
+      "id": "confidentiality",
+      "pass": true,
+      "explanation": "There is no evidence of disclosure of confidential information or other projects' restricted data in the update.",
+      "violations": []
+    },
+    {
+      "id": "escalation",
+      "pass": true,
+      "explanation": "No missing required data, Sev-1 flags, or rejected actions that necessitate escalation have been identified in the draft.",
+      "violations": []
+    }
+  ],
+  "_usage": {
+    "prompt": 3297,
+    "completion": 314
+  }
+}
+CONTROL 41%
+{
+  "verdict": "pass",
+  "reasons": [],
+  "checks": [
+    {
+      "id": "facts",
+      "pass": true,
+      "explanation": "All factual claims in the draft match the retrieved evidence for project P-NORTH. The project ID, name, sprint status, metrics, and open issues are accurately reflected in the draft.",
+      "violations": []
+    },
+    {
+      "id": "stories",
+      "pass": true,
+      "explanation": "The proposed story 'Develop contextual tips' is in scope according to the PRD and is within the configured queue limits. The draft accurately states that one story is queued for approval.",
+      "violations": []
+    },
+    {
+      "id": "authority",
+      "pass": true,
+      "explanation": "The draft does not claim any human authority to publish updates or create/merge tickets. It accurately states that the draft is queued for review and not for publication.",
+      "violations": []
+    },
+    {
+      "id": "confidentiality",
+      "pass": true,
+      "explanation": "There is no indication that the draft discloses confidential or embargoed information. All content adheres to project boundaries and guidelines.",
+      "violations": []
+    },
+    {
+      "id": "escalation",
+      "pass": true,
+      "explanation": "There are no current blockers requiring escalation, and the draft is appropriately marked as queued for review.",
+      "violations": []
+    }
+  ],
+  "_usage": {
+    "prompt": 3297,
+    "completion": 308
+  }
+}

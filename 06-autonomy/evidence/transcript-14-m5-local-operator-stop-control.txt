@@ -1,0 +1,10 @@
+test_critic_and_drafter_share_preflight (__main__.StopTests.test_critic_and_drafter_share_preflight) ... ok
+test_ctrl_c_holds_output_and_blocks_restart (__main__.StopTests.test_ctrl_c_holds_output_and_blocks_restart) ... ok
+test_resume_is_explicit_and_idempotent (__main__.StopTests.test_resume_is_explicit_and_idempotent) ... ok
+test_stop_blocks_new_run_before_client (__main__.StopTests.test_stop_blocks_new_run_before_client) ... ok
+test_stop_during_tool_batch_prevents_next_tool (__main__.StopTests.test_stop_during_tool_batch_prevents_next_tool) ... ok
+
+----------------------------------------------------------------------
+Ran 5 tests in 0.005s
+
+OK
